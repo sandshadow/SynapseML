@@ -18,7 +18,8 @@ description: SynapseML Development Setup
 1. Add another Git Remote to track the original SynapseML repo. It's recommended to call it `upstream`:
     - `git remote add upstream https://github.com/microsoft/SynapseML.git`
     - See more about Git remotes here: [Git - Working with remotes](https://git-scm.com/book/en/v2/Git-Basics-Working-with-Remotes)
-1. Go to the directory where you cloed the repo (e.g., `SynapseML`) with `cd SynapseML`
+1. Install the [Azure CLI command line](https://docs.microsoft.com/cli/azure/)
+1. Go to the directory where you cloned the repo (e.g., `SynapseML`) with `cd SynapseML`
 1. Run sbt to compile and grab datasets
     - `sbt setup`
 1. [Install IntelliJ](https://www.jetbrains.com/idea/download)
@@ -39,6 +40,8 @@ description: SynapseML Development Setup
     pre-commit install
     ```
     - Now `pre-commit` should automatically run on every `git commit` operation to find AND fix linting issues.
+1. Install WinUtils (Prerequisite for developing on Windows)
+     Download [WinUtils executable](https://public-repo-1.hortonworks.com/hdp-win-alpha/winutils.exe) to a location such as C:\WinUtils\bin. Then, add the environment variable HADOOP_HOME, and set the value of the variable to C:\WinUtils
 
 > NOTE
 >
