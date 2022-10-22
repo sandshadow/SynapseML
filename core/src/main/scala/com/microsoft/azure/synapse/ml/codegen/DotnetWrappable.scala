@@ -4,7 +4,7 @@
 package com.microsoft.azure.synapse.ml.codegen
 
 import com.microsoft.azure.synapse.ml.core.env.FileUtilities
-import com.microsoft.azure.synapse.ml.param.{ServiceParam, WrappableParam}
+import com.microsoft.azure.synapse.ml.param.{DotnetWrappableParam, ServiceParam, WrappableParam}
 import org.apache.commons.lang.StringUtils.capitalize
 import org.apache.spark.ml._
 import org.apache.spark.ml.evaluation.Evaluator
@@ -135,7 +135,7 @@ trait DotnetWrappable extends BaseWrappable {
             |${docString.replaceFirst(sp.name, s"${sp.name} column")}
             |${sp.dotnetSetterForSrvParamCol(dotnetClassName, capName, dotnetClassWrapperName)}
             |""".stripMargin
-      case wp: WrappableParam[_] =>
+      case wp: DotnetWrappableParam[_] =>
         s"""|$docString
             |${wp.dotnetSetter(dotnetClassName, capName, dotnetClassWrapperName)}
             |""".stripMargin
@@ -161,7 +161,7 @@ trait DotnetWrappable extends BaseWrappable {
           |/// ${p.name}: ${p.doc}
           |/// </returns>""".stripMargin
     p match {
-      case wp: WrappableParam[_] =>
+      case wp: DotnetWrappableParam[_] =>
         s"""|$docString
             |${wp.dotnetGetter(capName)}
             |""".stripMargin
@@ -275,7 +275,9 @@ trait DotnetWrappable extends BaseWrappable {
     val srcFolders = importPath.mkString(".")
       .replaceAllLiterally("com.microsoft.azure.synapse.ml", "synapse.ml").split(".".toCharArray)
     val srcDir = FileUtilities.join((Seq(conf.dotnetSrcDir.toString) ++ srcFolders.toSeq): _*)
-    srcDir.mkdirs()
+    if (!srcDir.exists()) {
+      srcDir.mkdirs()
+    }
     Files.write(
       FileUtilities.join(srcDir, dotnetClassName + ".cs").toPath,
       dotnetClass().getBytes(StandardCharsets.UTF_8))

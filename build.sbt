@@ -1,15 +1,15 @@
-import java.io.{File, PrintWriter}
-import java.net.URL
+import BuildUtils._
 import org.apache.commons.io.FileUtils
 import sbt.ExclusionRule
-
-import scala.xml.{Node => XmlNode, NodeSeq => XmlNodeSeq, _}
-import scala.xml.transform.{RewriteRule, RuleTransformer}
-import BuildUtils._
 import xerial.sbt.Sonatype._
 
+import java.io.{File, PrintWriter}
+import java.net.URL
+import scala.xml.transform.{RewriteRule, RuleTransformer}
+import scala.xml.{Node => XmlNode, NodeSeq => XmlNodeSeq, _}
+
 val condaEnvName = "synapseml"
-val sparkVersion = "3.2.0"
+val sparkVersion = "3.2.2"
 name := "synapseml"
 ThisBuild / organization := "com.microsoft.azure"
 ThisBuild / scalaVersion := "2.12.15"
@@ -29,10 +29,10 @@ val coreDependencies = Seq(
   "org.scalatest" %% "scalatest" % "3.0.5" % "test")
 val extraDependencies = Seq(
   "org.scalactic" %% "scalactic" % "3.0.5",
-  "io.spray" %% "spray-json" % "1.3.2",
+  "io.spray" %% "spray-json" % "1.3.5",
   "com.jcraft" % "jsch" % "0.1.54",
-  "org.apache.httpcomponents" % "httpclient" % "4.5.6",
-  "org.apache.httpcomponents" % "httpmime" % "4.5.6",
+  "org.apache.httpcomponents.client5" % "httpclient5" % "5.1.3",
+  "org.apache.httpcomponents" % "httpmime" % "4.5.13",
   "com.linkedin.isolation-forest" %% "isolation-forest_3.2.0" % "2.0.8"
 ).map(d => d excludeAll (excludes: _*))
 val dependencies = coreDependencies ++ extraDependencies
@@ -154,8 +154,57 @@ publishDotnetTestBase := {
   val dotnetHelperFile = join(dotnetTestBaseDir, "SynapseMLVersion.cs")
   if (dotnetHelperFile.exists()) FileUtils.forceDelete(dotnetHelperFile)
   FileUtils.writeStringToFile(dotnetHelperFile, fileContent, "utf-8")
+
+  val dotnetTestBaseProjContent =
+    s"""<Project Sdk="Microsoft.NET.Sdk">
+       |
+       |  <PropertyGroup>
+       |    <TargetFramework>netstandard2.1</TargetFramework>
+       |    <LangVersion>9.0</LangVersion>
+       |    <AssemblyName>SynapseML.DotnetE2ETest</AssemblyName>
+       |    <IsPackable>true</IsPackable>
+       |    <Description>SynapseML .NET Test Base</Description>
+       |    <Version>${dotnetedVersion(version.value)}</Version>
+       |  </PropertyGroup>
+       |
+       |  <ItemGroup>
+       |    <PackageReference Include="xunit" Version="2.4.1" />
+       |    <PackageReference Include="Microsoft.Spark" Version="2.1.1" />
+       |    <PackageReference Include="IgnoresAccessChecksToGenerator" Version="0.4.0" PrivateAssets="All" />
+       |  </ItemGroup>
+       |
+       |  <ItemGroup>
+       |    <InternalsVisibleTo Include="SynapseML.Cognitive" />
+       |    <InternalsVisibleTo Include="SynapseML.Core" />
+       |    <InternalsVisibleTo Include="SynapseML.DeepLearning" />
+       |    <InternalsVisibleTo Include="SynapseML.Lightgbm" />
+       |    <InternalsVisibleTo Include="SynapseML.Opencv" />
+       |    <InternalsVisibleTo Include="SynapseML.Vw" />
+       |    <InternalsVisibleTo Include="SynapseML.Cognitive.Test" />
+       |    <InternalsVisibleTo Include="SynapseML.Core.Test" />
+       |    <InternalsVisibleTo Include="SynapseML.DeepLearning.Test" />
+       |    <InternalsVisibleTo Include="SynapseML.Lightgbm.Test" />
+       |    <InternalsVisibleTo Include="SynapseML.Opencv.Test" />
+       |    <InternalsVisibleTo Include="SynapseML.Vw.Test" />
+       |  </ItemGroup>
+       |
+       |  <PropertyGroup>
+       |    <InternalsAssemblyNames>Microsoft.Spark</InternalsAssemblyNames>
+       |  </PropertyGroup>
+       |
+       |  <PropertyGroup>
+       |    <InternalsAssemblyUseEmptyMethodBodies>false</InternalsAssemblyUseEmptyMethodBodies>
+       |  </PropertyGroup>
+       |
+       |</Project>""".stripMargin
+  // update the version of current dotnetTestBase assembly
+  val dotnetTestBaseProj = join(dotnetTestBaseDir, "dotnetTestBase.csproj")
+  if (dotnetTestBaseProj.exists()) FileUtils.forceDelete(dotnetTestBaseProj)
+  FileUtils.writeStringToFile(dotnetTestBaseProj, dotnetTestBaseProjContent, "utf-8")
+
   packDotnetAssemblyCmd(join(dotnetTestBaseDir, "target").getAbsolutePath, dotnetTestBaseDir)
-  val packagePath = join(dotnetTestBaseDir, "target", s"SynapseML.DotnetE2ETest.0.9.1.nupkg").getAbsolutePath
+  val packagePath = join(dotnetTestBaseDir,
+    "target", s"SynapseML.DotnetE2ETest.${dotnetedVersion(version.value)}.nupkg").getAbsolutePath
   publishDotnetAssemblyCmd(packagePath, rootGenDir.value)
 }
 
@@ -197,7 +246,7 @@ generateDotnetDoc := {
   val doxygenHelperFile = join(dotnetSrcDir, "DoxygenHelper.txt")
   if (doxygenHelperFile.exists()) FileUtils.forceDelete(doxygenHelperFile)
   FileUtils.writeStringToFile(doxygenHelperFile, fileContent, "utf-8")
-  runCmd(Seq("bash", "-c","cat DoxygenHelper.txt >> Doxyfile", ""), dotnetSrcDir)
+  runCmd(Seq("bash", "-c", "cat DoxygenHelper.txt >> Doxyfile", ""), dotnetSrcDir)
   runCmd(Seq("doxygen"), dotnetSrcDir)
 }
 
@@ -270,9 +319,11 @@ publishPypi := {
 
 val publishDocs = TaskKey[Unit]("publishDocs", "publish docs for scala, python and dotnet")
 publishDocs := {
-  generatePythonDoc.value
-  (root / Compile / unidoc).value
-  generateDotnetDoc.value
+  Def.sequential(
+    generatePythonDoc,
+    generateDotnetDoc,
+    (root / Compile / unidoc)
+  ).value
   val html =
     """
       |<html><body><pre style="font-size: 150%;">
@@ -318,6 +369,7 @@ val settings = Seq(
   Test / scalastyleConfig := (ThisBuild / baseDirectory).value / "scalastyle-test-config.xml",
   Test / logBuffered := false,
   Test / parallelExecution := false,
+  Test / publishArtifact := true,
   assembly / test := {},
   assembly / assemblyMergeStrategy := {
     case PathList("META-INF", xs@_*) => MergeStrategy.discard
@@ -378,8 +430,8 @@ lazy val cognitive = (project in file("cognitive"))
   .settings(settings ++ Seq(
     libraryDependencies ++= Seq(
       "com.microsoft.cognitiveservices.speech" % "client-jar-sdk" % "1.14.0",
-      "com.azure" % "azure-storage-blob" % "12.14.2",
-      "com.azure" % "azure-ai-textanalytics" % "5.1.4"
+      "org.apache.hadoop" % "hadoop-common" % "3.3.4" % "test",
+      "org.apache.hadoop" % "hadoop-azure" % "3.3.4" % "test",
     ),
     name := "synapseml-cognitive"
   ): _*)
